@@ -10,8 +10,9 @@ public class NewBehaviourScript : MonoBehaviour
     private InputAction sprintAction;
     private Camera camera;
     public float moveSpeed;
-    private Vector3 moveDir;
+    private Vector2 moveDir;
     public float jumpForce;
+    public float fallRate;
     private bool jump;
     private bool isGrounded;
     private bool hasDoubleJumped;
@@ -25,7 +26,6 @@ public class NewBehaviourScript : MonoBehaviour
         hasDoubleJumped = false;
         camera = GetComponentInChildren<Camera>();
         rb = GetComponent<Rigidbody>();
-        rb.maxLinearVelocity = moveSpeed;
 
         moveAction = InputSystem.actions.FindAction("Move");
         jumpAction = InputSystem.actions.FindAction("Jump");
@@ -35,9 +35,9 @@ public class NewBehaviourScript : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        Vector2 movement = moveAction.ReadValue<Vector2>();
+        
+        moveDir = moveAction.ReadValue<Vector2>() * moveSpeed;
 
-        moveDir = new Vector3(movement.x, 0, movement.y) * moveSpeed;
         if (sprintAction.IsPressed())
         {
             camera.fieldOfView = 90;
@@ -62,16 +62,22 @@ public class NewBehaviourScript : MonoBehaviour
 
     void FixedUpdate()
     {
-        if (rb.linearVelocity.magnitude < moveSpeed) // this factors in y magnitude too btw jesus
-        {
-            rb.AddForce(moveDir, ForceMode.Impulse);
-        }
+
+        rb.linearVelocity = new Vector3(moveDir.x, rb.linearVelocity.y, moveDir.y);
 
         if (jump)
         {
             Debug.Log("adding jump force");
-            rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+            rb.linearVelocity = new Vector3(rb.linearVelocity.x, jumpForce, rb.linearVelocity.z);
+            //rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
             jump = false;
+        }
+
+        if (rb.linearVelocity.y < 0)
+        {
+            //rb.linearVelocity = new Vector3(rb.linearVelocity.x, fallRate , rb.linearVelocity.z);
+            rb.linearVelocity += Vector3.up * (fallRate * Time.fixedDeltaTime);
+            // if this doesnt work we can set it back to (physics.gravity.y * fallrate * time.timeimttietiteimteit)
         }
     }
 
@@ -98,7 +104,7 @@ public class NewBehaviourScript : MonoBehaviour
 
     IEnumerator WaitToSetCanJump()
     {
-        yield return new WaitForSeconds(1);
+        yield return new WaitForSeconds(0.5f);
 
         if (!hasDoubleJumped) canJump = true;
         Debug.Log("coroutine finished");
