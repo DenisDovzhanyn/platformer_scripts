@@ -19,41 +19,26 @@ public class NewBehaviourScript : MonoBehaviour
     public float fallMultiplier;
     private float currFallMultiplier;
 
-    private bool jump;
-    private bool canJump;
-    private bool hasDoubleJumped;
+    private bool attemptingJump = false;
+    private bool canJump = true;
 
-    private bool isGrounded;
-    private bool isOnWall;
+    private bool isGrounded = true;
+    private bool isOnWall = false;
+    private bool isExitingWall = false;
     public float maxWallTime;
     private float wallTimeCounter;
 
-    private float pitch; // we keep our own pitch 
+    private float pitch = 0; // we keep our own pitch 
 
     private RaycastHit wallhit;
-    private State state;
     // Start is called once before the first execution of Update after the MonoBehaviour is created
-
-    enum State
-    {
-        ExitingWall,
-        Something
-    }
-
     void Start()
     {
-        state = State.Something;
+        //* set state in class definition
         Cursor.visible = false;
         Cursor.lockState = CursorLockMode.Locked;
-        pitch = 0f;
-
-        isOnWall = false;
-        currFallMultiplier = fallMultiplier;
         
-        canJump = true;
-        jump = false;
-        isGrounded = true;
-        hasDoubleJumped = false;
+        currFallMultiplier = fallMultiplier;
 
         rb = GetComponent<Rigidbody>();
         cam = GetComponentInChildren<Camera>();
@@ -68,32 +53,17 @@ public class NewBehaviourScript : MonoBehaviour
     {
         GatherInput();
         HandleCameraPitch();
-
         // because camera is attached to player and its rotation is relative to it, we rotate the player left/right
         rb.transform.Rotate(Vector3.up * lookInput.x);
-
-        if (jumpAction.IsPressed() && canJump)
-        {
-            jump = true;
-        }
     }
 
     void FixedUpdate()
     {
         // var move = new Vector3(moveDir.x, rb.linearVelocity.y, moveDir.y);
-        CheckGround();
-        CheckWall();
-        if (isOnWall && !isGrounded && state != State.ExitingWall)
-        {
-            rb.useGravity = false;
-            rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z);
-        }
-        else
-        {
-            rb.useGravity = true;
-        }
+        UpdateGroundedState();
+        HandleWallContact();
         HandleMovement();
-        if (jump) HandleJump();
+        HandleJump();
         HandleFall();
     }
 
@@ -113,97 +83,99 @@ public class NewBehaviourScript : MonoBehaviour
     {
         moveDir = moveAction.ReadValue<Vector2>() * moveSpeed;
         lookInput = lookAction.ReadValue<Vector2>();
+        attemptingJump = jumpAction.IsPressed() && canJump;
     }
 
-    void CheckGround()
+    void UpdateGroundedState()
     {
         Ray rayDown = new Ray(transform.position, Vector3.down);
 
-        if (Physics.Raycast(rayDown, 1.5f, 1 << 3))
-        {
-            isGrounded = true;
-            hasDoubleJumped = false;
-            canJump = true;
-            wallTimeCounter = maxWallTime;
-            state = State.Something;
-        }
-        else
+        if (!Physics.Raycast(rayDown, 1.5f, 1 << 3))
         {
             isGrounded = false;
+            return;
         }
+        
+        isGrounded = true;
+        canJump = true;
+        wallTimeCounter = maxWallTime;
+        isExitingWall = false;
     }
 
-    void CheckWall()
+    void HandleWallContact()
     {
         Ray rayLeft = new Ray(transform.position, transform.right * -1);
         Ray rayRight = new Ray(transform.position, transform.right);
-        if (Physics.Raycast(rayLeft, out wallhit, 1, 1 << 6) || Physics.Raycast(rayRight, out wallhit, 1, 1 << 6))
+
+        isOnWall = Physics.Raycast(rayLeft, out wallhit, 1, 1 << 6) || Physics.Raycast(rayRight, out wallhit, 1, 1 << 6);
+
+        if (!isOnWall || isGrounded || isExitingWall)
         {
-            isOnWall = true;
+            rb.useGravity = true;
+            return;
         }
-        else
-        {
-            isOnWall = false;
-        }
+        
+        rb.useGravity = false;
+        rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z);
     }
 
     void HandleMovement()
     {
-        Vector3 forward = transform.forward;
-        Vector3 right = transform.right;
-
+        Vector3 longitudanal = transform.forward;
+        Vector3 lateral = transform.right;
 
         //* if we want to keep speed when in air, instead of multiplying forward by the input, we multiply forward by the magnitude/vel of x and z
         //* this way we can like strafe/ do those surf movements by directing our velocity in the direction we are facing mid air
         // makes player move either forward or backward depending on y input (W or S);
-        forward *= moveDir.y;
+        longitudanal *= moveDir.y;
         // makes player move side to side relative to way they are facing depending on x input (A or D);
-        right *= moveDir.x;
+        lateral *= moveDir.x;
         // combines all these values together while keeping their vertical velocity;
-        //var move = forward + right + new Vector3(0,rb.linearVelocity.y,0);
-        var move = forward + right;
+        var move = longitudanal + lateral;
         var currentVelocityNoY = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z);
 
         if (isGrounded)
         {
             rb.AddForce(move - currentVelocityNoY, ForceMode.VelocityChange);
+            return;
         }
-        else if (!isGrounded && isOnWall && state != State.ExitingWall)
-        {
-            // reflects the normal direction so that we are pushing against the
-            rb.AddForce((-wallhit.normal * 5) + (move - currentVelocityNoY), ForceMode.VelocityChange);
-            wallTimeCounter -= Time.deltaTime;
-            if (wallTimeCounter <= 0) state = State.ExitingWall;
-        }
-        else
+
+        if (!isOnWall || isExitingWall)
         {
             rb.AddForce(move - currentVelocityNoY, ForceMode.Acceleration);
+            return;
         }
+        
+        // reflects the normal direction so that we are pushing against the
+        rb.AddForce((-wallhit.normal * 5) + (move - currentVelocityNoY), ForceMode.VelocityChange);
+        wallTimeCounter -= Time.deltaTime;
+        if (wallTimeCounter <= 0) isExitingWall = true;
     }
 
     void HandleJump()
     {
+        if (!attemptingJump || !canJump) return;
+
+        attemptingJump = false;
+        canJump = false;
+
         if (isGrounded)
         {
             rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z) + Vector3.up * jumpForce;
-            jump = false;
-
-            canJump = false;
             StartCoroutine(WaitToSetCanJump());
+            return;
         }
-        else if (!hasDoubleJumped && canJump)
+
+        //* either player has already jumped or they have fallen off a ledge
+        if (isOnWall)
         {
-            if (isOnWall)
-            {
-                state = State.ExitingWall;
-                wallTimeCounter = 0;
-                StartCoroutine(ExitingWall());
-            }
-            rb.linearVelocity = cam.transform.forward * (jumpForce * 3);
-            jump = false;
-            hasDoubleJumped = true;
-            canJump = false;
+            isExitingWall = true;
+            wallTimeCounter = 0;
+            StartCoroutine(ExitingWall());
         }
+
+        rb.linearVelocity = cam.transform.forward * (jumpForce * 3);
+        
     }
 
     void HandleFall()
@@ -226,13 +198,13 @@ public class NewBehaviourScript : MonoBehaviour
     {
         yield return new WaitForSeconds(0.5f);
 
-        if (!hasDoubleJumped) canJump = true;
+        canJump = true;
     }
 
     IEnumerator ExitingWall()
     {
         yield return new WaitForSeconds(1f);
 
-        state = State.Something;
+        isExitingWall = false;
     }
 }
