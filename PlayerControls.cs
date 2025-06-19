@@ -1,4 +1,4 @@
-using System;
+
 using System.Collections;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -7,27 +7,25 @@ public class NewBehaviourScript : MonoBehaviour
 {
     private Rigidbody rb;
     private Camera cam;
-    private InputAction moveAction;
-    private InputAction jumpAction;
-    private InputAction lookAction;
 
     public float moveSpeed;
     public float jumpForce;
     private Vector2 moveDir;
     private Vector2 lookInput;
-   
+
     public float fallMultiplier;
     private float currFallMultiplier;
 
     private bool attemptingJump = false;
     private bool canJump = true;
+    private bool doCameraTransition = false;
 
     private bool isGrounded = true;
     private bool isOnWall = false;
     private bool isExitingWall = false;
     public float maxWallTime;
     private float wallTimeCounter;
-
+    private float lerpCount = 0;
     private float pitch = 0; // we keep our own pitch 
 
     private RaycastHit wallhit;
@@ -37,23 +35,30 @@ public class NewBehaviourScript : MonoBehaviour
         //* set state in class definition
         Cursor.visible = false;
         Cursor.lockState = CursorLockMode.Locked;
-        
+
         currFallMultiplier = fallMultiplier;
 
         rb = GetComponent<Rigidbody>();
         cam = GetComponentInChildren<Camera>();
 
-        moveAction = InputSystem.actions.FindAction("Move");
-        jumpAction = InputSystem.actions.FindAction("Jump");
-        lookAction = InputSystem.actions.FindAction("Look");
     }
 
     // Update is called once per frame
     void Update()
     {
-        GatherInput();
+        //GatherInput();
         HandleCameraPitch();
         // because camera is attached to player and its rotation is relative to it, we rotate the player left/right
+        if (doCameraTransition)
+        {
+            cam.fieldOfView += 60f * Time.deltaTime;
+            if (cam.fieldOfView >= 70) doCameraTransition = false;
+        }
+        else if (cam.fieldOfView >= 60)
+        {
+            cam.fieldOfView -= 60f * Time.deltaTime;
+        }
+
         rb.transform.Rotate(Vector3.up * lookInput.x);
     }
 
@@ -79,23 +84,31 @@ public class NewBehaviourScript : MonoBehaviour
         pitch = Mathf.Clamp(pitch, -90, 90);
     }
 
-    void GatherInput()
+    public void OnMove(InputValue value)
     {
-        moveDir = moveAction.ReadValue<Vector2>() * moveSpeed;
-        lookInput = lookAction.ReadValue<Vector2>();
-        attemptingJump = jumpAction.IsPressed() && canJump;
+        moveDir = value.Get<Vector2>() * moveSpeed;
+    }
+
+    public void OnJump(InputValue value)
+    {
+        attemptingJump = value.isPressed && canJump;
+    }
+
+    public void OnLook(InputValue value)
+    {
+        lookInput = value.Get<Vector2>();
     }
 
     void UpdateGroundedState()
     {
         Ray rayDown = new Ray(transform.position, Vector3.down);
 
-        if (!Physics.Raycast(rayDown, 1.5f, 1 << 3))
+        if (!Physics.Raycast(rayDown, 1.1f, 1 << 3))
         {
             isGrounded = false;
             return;
         }
-        
+
         isGrounded = true;
         canJump = true;
         wallTimeCounter = maxWallTime;
@@ -114,7 +127,7 @@ public class NewBehaviourScript : MonoBehaviour
             rb.useGravity = true;
             return;
         }
-        
+
         rb.useGravity = false;
         rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z);
     }
@@ -124,8 +137,6 @@ public class NewBehaviourScript : MonoBehaviour
         Vector3 longitudanal = transform.forward;
         Vector3 lateral = transform.right;
 
-        //* if we want to keep speed when in air, instead of multiplying forward by the input, we multiply forward by the magnitude/vel of x and z
-        //* this way we can like strafe/ do those surf movements by directing our velocity in the direction we are facing mid air
         // makes player move either forward or backward depending on y input (W or S);
         longitudanal *= moveDir.y;
         // makes player move side to side relative to way they are facing depending on x input (A or D);
@@ -145,7 +156,7 @@ public class NewBehaviourScript : MonoBehaviour
             rb.AddForce(move - currentVelocityNoY, ForceMode.Acceleration);
             return;
         }
-        
+
         // reflects the normal direction so that we are pushing against the
         rb.AddForce((-wallhit.normal * 5) + (move - currentVelocityNoY), ForceMode.VelocityChange);
         wallTimeCounter -= Time.deltaTime;
@@ -175,7 +186,7 @@ public class NewBehaviourScript : MonoBehaviour
         }
 
         rb.linearVelocity = cam.transform.forward * (jumpForce * 3);
-        
+        //doCameraTransition = true;
     }
 
     void HandleFall()
@@ -193,7 +204,7 @@ public class NewBehaviourScript : MonoBehaviour
         }
     }
 
-    
+
     IEnumerator WaitToSetCanJump()
     {
         yield return new WaitForSeconds(0.5f);
@@ -207,4 +218,5 @@ public class NewBehaviourScript : MonoBehaviour
 
         isExitingWall = false;
     }
+
 }
