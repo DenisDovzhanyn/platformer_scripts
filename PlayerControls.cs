@@ -22,6 +22,7 @@ public class NewBehaviourScript : MonoBehaviour
     private bool doCameraTransition = false;
 
     private bool isGrounded = true;
+    private float coyoteTime = 0.2f;
     private bool isOnWall = false;
     private bool isExitingWall = false;
     public float maxWallTime;
@@ -110,9 +111,11 @@ public class NewBehaviourScript : MonoBehaviour
         if (!Physics.Raycast(rayDown, 1.1f, 1 << 3))
         {
             isGrounded = false;
+            coyoteTime -= Time.deltaTime;
             return;
         }
 
+        coyoteTime = 0.2f;
         isGrounded = true;
         canJump = true;
         wallTimeCounter = maxWallTime;
@@ -129,12 +132,14 @@ public class NewBehaviourScript : MonoBehaviour
 
         if (!isOnWall || isGrounded || isExitingWall)
         {
-            rb.useGravity = true;
+            //rb.useGravity = true;
             return;
         }
 
-        rb.useGravity = false;
-        rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z);
+        //rb.useGravity = false;
+        // so basically, as long as we have the right to 'wall slide' and we are not going further up the wall, we will prevent gravity from pulling down
+        if (rb.linearVelocity.y <= 1) rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z);
+        //
     }
 
     void HandleMovement()
@@ -163,9 +168,10 @@ public class NewBehaviourScript : MonoBehaviour
         }
 
         // reflects the normal direction so that we are pushing against the
-        rb.AddForce((-wallhit.normal * 5) + ((move * 1.5f) - currentVelocityNoY), ForceMode.VelocityChange);
+        //rb.AddForce((-wallhit.normal * 5) + (move - currentVelocityNoY), ForceMode.VelocityChange);
+        rb.AddForce(-wallhit.normal + (move - currentVelocityNoY), ForceMode.Acceleration);
         wallTimeCounter -= Time.deltaTime;
-        if (wallTimeCounter <= 0) isExitingWall = true;
+        if (wallTimeCounter <= 0 || currentVelocityNoY.magnitude <= 5) isExitingWall = true;
     }
 
     void HandleJump()
@@ -176,7 +182,7 @@ public class NewBehaviourScript : MonoBehaviour
         canJump = false;
 
         rb.linearDamping = defaultLinearDampening / 2;
-        if (isGrounded)
+        if (isGrounded || (!isGrounded && coyoteTime > 0))
         {
             rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z) + Vector3.up * jumpForce;
             StartCoroutine(WaitToSetCanJump());
@@ -197,17 +203,17 @@ public class NewBehaviourScript : MonoBehaviour
 
     void HandleFall()
     {
-        if (rb.linearVelocity.y < 0)
-        {
+        if (rb.linearVelocity.y >= 0) return;
 
-            // basically what this does is that like, we add extra gravity. if we want gravity to be normal like default unity physics,
-            // then we set fall multiplier to 1, because 1 - 1 = 0 => physics.gravity.y * 0 = 0. so no additional gravity will be added because
-            // engine already applying gravity
-            float extraDownVel = Physics.gravity.y * (currFallMultiplier - 1);
-            //rb.linearVelocity += Vector3.up * (extraDownVel * Time.fixedDeltaTime);
-            rb.AddForce(Vector3.up * extraDownVel, ForceMode.Acceleration);
-            //rb.linearVelocity = new Vector3(rb.linearVelocity.x, fallRate , rb.linearVelocity.z);
-        }
+        // basically what this does is that like, we add extra gravity. if we want gravity to be normal like default unity physics,
+        // then we set fall multiplier to 1, because 1 - 1 = 0 => physics.gravity.y * 0 = 0. so no additional gravity will be added because
+        // engine already applying gravity
+        float extraDownVel = isExitingWall && isOnWall ? 0 : currFallMultiplier - 1;
+        // if we are currently exiting a wall and we are still on it we want to 'slide' down it, otherwise regular gravity
+        extraDownVel *= Physics.gravity.y;
+        //rb.linearVelocity += Vector3.up * (extraDownVel * Time.fixedDeltaTime);
+        rb.AddForce(Vector3.up * extraDownVel, ForceMode.Acceleration);
+        //rb.linearVelocity = new Vector3(rb.linearVelocity.x, fallRate , rb.linearVelocity.z);
     }
 
 
