@@ -6,6 +6,7 @@ using UnityEngine.InputSystem;
 public class NewBehaviourScript : MonoBehaviour
 {
     private Rigidbody rb;
+    private float defaultLinearDampening;
     private Camera cam;
 
     public float moveSpeed;
@@ -25,8 +26,8 @@ public class NewBehaviourScript : MonoBehaviour
     private bool isExitingWall = false;
     public float maxWallTime;
     private float wallTimeCounter;
-    private float lerpCount = 0;
     private float pitch = 0; // we keep our own pitch 
+    public float mouseSens;
 
     private RaycastHit wallhit;
     // Start is called once before the first execution of Update after the MonoBehaviour is created
@@ -41,25 +42,16 @@ public class NewBehaviourScript : MonoBehaviour
         rb = GetComponent<Rigidbody>();
         cam = GetComponentInChildren<Camera>();
 
+        defaultLinearDampening = rb.linearDamping;
     }
 
     // Update is called once per frame
     void Update()
     {
-        //GatherInput();
         HandleCameraPitch();
         // because camera is attached to player and its rotation is relative to it, we rotate the player left/right
-        if (doCameraTransition)
-        {
-            cam.fieldOfView += 60f * Time.deltaTime;
-            if (cam.fieldOfView >= 70) doCameraTransition = false;
-        }
-        else if (cam.fieldOfView >= 60)
-        {
-            cam.fieldOfView -= 60f * Time.deltaTime;
-        }
-
-        rb.transform.Rotate(Vector3.up * lookInput.x);
+        UpdateCameraFov();
+        rb.transform.Rotate(Vector3.up * (lookInput.x * mouseSens));
     }
 
     void FixedUpdate()
@@ -80,7 +72,7 @@ public class NewBehaviourScript : MonoBehaviour
     void HandleCameraPitch()
     {
         // even though it hurts my head, we subtract because in 'eular angles' a positive pitch makes us point down on the x axis
-        pitch -= lookInput.y;
+        pitch -= lookInput.y * mouseSens;
         pitch = Mathf.Clamp(pitch, -90, 90);
     }
 
@@ -99,6 +91,18 @@ public class NewBehaviourScript : MonoBehaviour
         lookInput = value.Get<Vector2>();
     }
 
+    void UpdateCameraFov()
+    {
+        if (!doCameraTransition && cam.fieldOfView >= 60) return;
+        float fovDecAmount = -80f * Time.deltaTime;
+        //* does a bouncy zoom effect
+
+        if (!doCameraTransition) fovDecAmount *= -1;
+        else if (cam.fieldOfView <= 50) doCameraTransition = false;
+
+        cam.fieldOfView += fovDecAmount;
+    }
+
     void UpdateGroundedState()
     {
         Ray rayDown = new Ray(transform.position, Vector3.down);
@@ -113,6 +117,7 @@ public class NewBehaviourScript : MonoBehaviour
         canJump = true;
         wallTimeCounter = maxWallTime;
         isExitingWall = false;
+        rb.linearDamping = defaultLinearDampening;
     }
 
     void HandleWallContact()
@@ -158,7 +163,7 @@ public class NewBehaviourScript : MonoBehaviour
         }
 
         // reflects the normal direction so that we are pushing against the
-        rb.AddForce((-wallhit.normal * 5) + (move - currentVelocityNoY), ForceMode.VelocityChange);
+        rb.AddForce((-wallhit.normal * 5) + ((move * 1.5f) - currentVelocityNoY), ForceMode.VelocityChange);
         wallTimeCounter -= Time.deltaTime;
         if (wallTimeCounter <= 0) isExitingWall = true;
     }
@@ -170,6 +175,7 @@ public class NewBehaviourScript : MonoBehaviour
         attemptingJump = false;
         canJump = false;
 
+        rb.linearDamping = defaultLinearDampening / 2;
         if (isGrounded)
         {
             rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z) + Vector3.up * jumpForce;
@@ -186,7 +192,7 @@ public class NewBehaviourScript : MonoBehaviour
         }
 
         rb.linearVelocity = cam.transform.forward * (jumpForce * 3);
-        //doCameraTransition = true;
+        doCameraTransition = true;
     }
 
     void HandleFall()
