@@ -104,11 +104,20 @@ public class NewBehaviourScript : MonoBehaviour
         cam.fieldOfView += fovIncAmount;
     }
 
+    // shows where we are casting overlapsphere
+    // void OnDrawGizmosSelected()
+    // {
+    //     Gizmos.color = Color.yellow;
+    //     Gizmos.DrawWireSphere(transform.position + (Vector3.down * 0.7f), 0.5f); // Start position
+
+    //     Debug.Log(isGrounded);
+    // }
     void UpdateGroundedState()
     {
-        Ray rayDown = new Ray(transform.position, Vector3.down);
+        Vector3 spherePosition = transform.position + (Vector3.down * 0.7f);
+        Collider[] hits = Physics.OverlapSphere(spherePosition, 0.5f, 1 << 3);
 
-        if (!Physics.Raycast(rayDown, 1.1f, 1 << 3))
+        if (hits.Length == 0)
         {
             isGrounded = false;
             coyoteTime -= Time.deltaTime;
