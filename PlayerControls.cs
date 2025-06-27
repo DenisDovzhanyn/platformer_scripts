@@ -34,7 +34,7 @@ public class NewBehaviourScript : MonoBehaviour
     public float mouseSens;
 
     private AudioSource audioPlayer;
-    private AudioClip currentClip;
+    private AudioClip[] currentClip = new AudioClip[2];
     private float timeSinceLastPlayed = 0f;
     public AudioClip metalWalk;
     public AudioClip metalWalkTwo;
@@ -50,6 +50,7 @@ public class NewBehaviourScript : MonoBehaviour
     void Start()
     {
         //* set state in class definition
+
         Cursor.visible = false;
         Cursor.lockState = CursorLockMode.Locked;
 
@@ -141,8 +142,16 @@ public class NewBehaviourScript : MonoBehaviour
             coyoteTime -= Time.deltaTime;
             return;
         }
-        if (hits[0].CompareTag("sand")) currentClip = Random.value > 0.5f ? sandWalk : sandWalkTwo;
-        else if (hits[0].CompareTag("metal")) currentClip = Random.value > 0.5f ? metalWalk : metalWalkTwo;
+        if (hits[0].CompareTag("sand"))
+        {
+            currentClip[0] = Random.value > 0.5f ? sandWalk : sandWalkTwo;
+            currentClip[1] = sandLand;
+        }
+        else if (hits[0].CompareTag("metal"))
+        {
+            currentClip[0] = Random.value > 0.5f ? metalWalk : metalWalkTwo;
+            currentClip[1] = metalLand;
+        }
 
         coyoteTime = 0.2f;
         isGrounded = true;
@@ -187,7 +196,7 @@ public class NewBehaviourScript : MonoBehaviour
             if (timeSinceLastPlayed > 0.25f && move.magnitude > 5f)
             {
                 timeSinceLastPlayed = 0;
-                audioPlayer.PlayOneShot(currentClip);
+                audioPlayer.PlayOneShot(currentClip[0]);
             }
 
             
@@ -221,6 +230,7 @@ public class NewBehaviourScript : MonoBehaviour
         {
             rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z) + Vector3.up * jumpForce;
             StartCoroutine(WaitToSetCanJump());
+            audioPlayer.PlayOneShot(currentClip[1]);
             return;
         }
 
