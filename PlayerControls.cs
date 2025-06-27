@@ -1,7 +1,10 @@
 
+using System;
 using System.Collections;
+using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using Random = UnityEngine.Random;
 
 public class NewBehaviourScript : MonoBehaviour
 {
@@ -30,6 +33,18 @@ public class NewBehaviourScript : MonoBehaviour
     private float pitch = 0; // we keep our own pitch 
     public float mouseSens;
 
+    private AudioSource audioPlayer;
+    private AudioClip currentClip;
+    private float timeSinceLastPlayed = 0f;
+    public AudioClip metalWalk;
+    public AudioClip metalWalkTwo;
+
+    public AudioClip sandWalk;
+    public AudioClip sandWalkTwo;
+
+    public AudioClip metalLand;
+    public AudioClip sandLand;
+
     private RaycastHit wallhit;
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
@@ -41,6 +56,7 @@ public class NewBehaviourScript : MonoBehaviour
         currFallMultiplier = fallMultiplier;
 
         rb = GetComponent<Rigidbody>();
+        audioPlayer = GetComponent<AudioSource>();
         cam = GetComponentInChildren<Camera>();
 
         defaultLinearDampening = rb.linearDamping;
@@ -49,6 +65,8 @@ public class NewBehaviourScript : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
+        timeSinceLastPlayed += Time.deltaTime;
+        
         HandleCameraPitch();
         // because camera is attached to player and its rotation is relative to it, we rotate the player left/right
         UpdateCameraFov();
@@ -123,6 +141,8 @@ public class NewBehaviourScript : MonoBehaviour
             coyoteTime -= Time.deltaTime;
             return;
         }
+        if (hits[0].CompareTag("sand")) currentClip = Random.value > 0.5f ? sandWalk : sandWalkTwo;
+        else if (hits[0].CompareTag("metal")) currentClip = Random.value > 0.5f ? metalWalk : metalWalkTwo;
 
         coyoteTime = 0.2f;
         isGrounded = true;
@@ -164,6 +184,13 @@ public class NewBehaviourScript : MonoBehaviour
 
         if (isGrounded)
         {
+            if (timeSinceLastPlayed > 0.25f && move.magnitude > 5f)
+            {
+                timeSinceLastPlayed = 0;
+                audioPlayer.PlayOneShot(currentClip);
+            }
+
+            
             rb.AddForce(move - currentVelocityNoY, ForceMode.VelocityChange);
             return;
         }
