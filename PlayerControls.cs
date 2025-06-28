@@ -21,12 +21,13 @@ public class NewBehaviourScript : MonoBehaviour
     private float currFallMultiplier;
 
     private bool attemptingJump = false;
-    private bool canJump = true;
     private bool doCameraTransition = false;
 
     private bool isGrounded = true;
+    private float timeSinceLastJump = 0;
     private float coyoteTime = 0.2f;
     private bool isOnWall = false;
+    private bool canWallJump = true;
     private bool isExitingWall = false;
     public float maxWallTime;
     private float wallTimeCounter;
@@ -36,6 +37,8 @@ public class NewBehaviourScript : MonoBehaviour
     private AudioSource audioPlayer;
     private AudioClip[] currentClip = new AudioClip[2];
     private float timeSinceLastPlayed = 0f;
+    private bool playLandSound = false;
+    private bool isLandSoundLoud;
     public AudioClip metalWalk;
     public AudioClip metalWalkTwo;
 
@@ -67,7 +70,7 @@ public class NewBehaviourScript : MonoBehaviour
     void Update()
     {
         timeSinceLastPlayed += Time.deltaTime;
-        
+        timeSinceLastJump += Time.deltaTime;
         HandleCameraPitch();
         // because camera is attached to player and its rotation is relative to it, we rotate the player left/right
         UpdateCameraFov();
@@ -103,7 +106,10 @@ public class NewBehaviourScript : MonoBehaviour
 
     public void OnJump(InputValue value)
     {
-        attemptingJump = value.isPressed && canJump;
+        if (isGrounded || coyoteTime > 0 || (isOnWall && canWallJump))
+            attemptingJump = true;
+        else
+            attemptingJump = false;
     }
 
     public void OnLook(InputValue value)
@@ -140,8 +146,11 @@ public class NewBehaviourScript : MonoBehaviour
         {
             isGrounded = false;
             coyoteTime -= Time.deltaTime;
+            playLandSound = coyoteTime < 0;
+            isLandSoundLoud = coyoteTime < -1;
             return;
         }
+
         if (hits[0].CompareTag("sand"))
         {
             currentClip[0] = Random.value > 0.5f ? sandWalk : sandWalkTwo;
@@ -155,7 +164,6 @@ public class NewBehaviourScript : MonoBehaviour
 
         coyoteTime = 0.2f;
         isGrounded = true;
-        canJump = true;
         wallTimeCounter = maxWallTime;
         isExitingWall = false;
         rb.linearDamping = defaultLinearDampening;
@@ -193,10 +201,17 @@ public class NewBehaviourScript : MonoBehaviour
 
         if (isGrounded)
         {
-            if (timeSinceLastPlayed > 0.25f && move.magnitude > 5f)
+            if (playLandSound)
+            {
+                timeSinceLastPlayed = 0.1f;
+                audioPlayer.PlayOneShot(currentClip[1], isLandSoundLoud ? 0.8f : 0.5f);
+                playLandSound = false;
+                isLandSoundLoud = false;
+            }
+            else if (timeSinceLastPlayed > 0.25f && move.magnitude > 5f)
             {
                 timeSinceLastPlayed = 0;
-                audioPlayer.PlayOneShot(currentClip[0]);
+                audioPlayer.PlayOneShot(currentClip[0], 0.5f);
             }
 
             
@@ -218,32 +233,54 @@ public class NewBehaviourScript : MonoBehaviour
         if (wallTimeCounter <= 0 || currentVelocityNoY.magnitude <= 5) isExitingWall = true;
     }
 
+    // void HandleJump()
+    // {
+    //     if (!attemptingJump || !canJump) return;
+
+    //     attemptingJump = false;
+    //     canJump = false;
+
+    //     rb.linearDamping = defaultLinearDampening / 2;
+    //     if (isGrounded || (!isGrounded && coyoteTime > 0))
+    //     {
+    //         rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z) + Vector3.up * jumpForce;
+    //         StartCoroutine(WaitToSetCanJump());
+    //         audioPlayer.PlayOneShot(currentClip[0], 0.8f);
+    //         return;
+    //     }
+
+    //     //* either player has already jumped or they have fallen off a ledge
+    //     if (isOnWall)
+    //     {
+    //         isExitingWall = true;
+    //         wallTimeCounter = 0;
+    //         StartCoroutine(ExitingWall());
+    //     }
+
+    //     rb.linearVelocity = cam.transform.forward * (jumpForce * 2);
+    //     doCameraTransition = true;
+    // }
+
     void HandleJump()
     {
-        if (!attemptingJump || !canJump) return;
-
+        if (!attemptingJump) return;
         attemptingJump = false;
-        canJump = false;
 
         rb.linearDamping = defaultLinearDampening / 2;
-        if (isGrounded || (!isGrounded && coyoteTime > 0))
+        if (isGrounded || coyoteTime > 0)
         {
+            if (timeSinceLastJump < 0.5f) return;
+            timeSinceLastJump = 0;
+
             rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z) + Vector3.up * jumpForce;
-            StartCoroutine(WaitToSetCanJump());
-            audioPlayer.PlayOneShot(currentClip[1]);
+            audioPlayer.PlayOneShot(currentClip[0], 0.8f);
             return;
         }
 
-        //* either player has already jumped or they have fallen off a ledge
-        if (isOnWall)
-        {
-            isExitingWall = true;
-            wallTimeCounter = 0;
-            StartCoroutine(ExitingWall());
-        }
-
-        rb.linearVelocity = cam.transform.forward * (jumpForce * 2);
-        doCameraTransition = true;
+        isExitingWall = true;
+        wallTimeCounter = 0;
+        StartCoroutine(ExitingWall());
+        rb.linearVelocity = (cam.transform.forward * jumpForce) + (wallhit.normal * jumpForce / 2) + (Vector3.up * jumpForce);
     }
 
     void HandleFall()
@@ -257,14 +294,6 @@ public class NewBehaviourScript : MonoBehaviour
         //rb.linearVelocity += Vector3.up * (extraDownVel * Time.fixedDeltaTime);
         rb.AddForce(Vector3.up * extraDownVel, ForceMode.Acceleration);
         //rb.linearVelocity = new Vector3(rb.linearVelocity.x, fallRate , rb.linearVelocity.z);
-    }
-
-
-    IEnumerator WaitToSetCanJump()
-    {
-        yield return new WaitForSeconds(0.5f);
-
-        canJump = true;
     }
 
     IEnumerator ExitingWall()
