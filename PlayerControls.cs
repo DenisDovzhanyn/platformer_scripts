@@ -39,6 +39,7 @@ public class NewBehaviourScript : MonoBehaviour
 
     private float pitch = 0; // we keep our own pitch 
     public float mouseSens;
+    private float rollLerp;
 
     private AudioSource audioPlayer;
     private AudioClip[] currentClip = new AudioClip[2];
@@ -59,6 +60,8 @@ public class NewBehaviourScript : MonoBehaviour
     public AudioClip stoneLand;
 
     private RaycastHit wallhit;
+    // i do this because even if raycast hits nothing, wall hit will be given default values which i do not want for my cam roll
+    private Vector3 wallNormal;
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
@@ -101,7 +104,8 @@ public class NewBehaviourScript : MonoBehaviour
 
     void LateUpdate()
     {
-        cam.transform.localRotation = Quaternion.Euler(pitch, 0, 0);
+        cam.transform.localRotation = Quaternion.Euler(pitch, cam.transform.localRotation.y, cam.transform.localRotation.z);
+        UpdateCameraOrientationOnWall();
     }
 
     void HandleCameraPitch()
@@ -151,6 +155,21 @@ public class NewBehaviourScript : MonoBehaviour
         else if (cam.fieldOfView >= 70) doCameraTransition = false;
 
         cam.fieldOfView += fovIncAmount;
+    }
+
+    void UpdateCameraOrientationOnWall()
+    {
+        //ALL i need to know from the wallhit is whether its facing a negative or positive direction, how can we know with both an x and z axis?
+        //if wallhit.normal returns something like (0.5, 0, -0.5) HOW can i extract that single negative value and know that we have a negative and i need
+        // char cam to rotate left (< 0 on z axis)
+
+
+        // yada yada yada do something here
+        float dot = Vector3.Dot(wallNormal, transform.right);
+        Quaternion roll = Quaternion.Euler(pitch, cam.transform.localRotation.y, 10 * -Mathf.Sign(dot));
+        
+        cam.transform.localRotation = Quaternion.Lerp(cam.transform.localRotation, roll, rollLerp);
+        
     }
 
     //shows where we are casting overlapsphere
@@ -207,14 +226,19 @@ public class NewBehaviourScript : MonoBehaviour
         Ray rayRight = new Ray(transform.position, transform.right);
 
         // we dont wanna say we are on a wall if we are grounded AND touching a wall yk
-        isOnWall = Physics.Raycast(rayLeft, out wallhit, 1, 1 << 6) || Physics.Raycast(rayRight, out wallhit, 1, 1 << 6) && !isGrounded;
+        isOnWall = (Physics.Raycast(rayLeft, out wallhit, 1, 1 << 6) || Physics.Raycast(rayRight, out wallhit, 1, 1 << 6)) && !isGrounded;
 
         if (!isOnWall || isGrounded || isExitingWall)
         {
             //rb.useGravity = true;
+            rollLerp -= Time.deltaTime * 5;
+            rollLerp = Mathf.Clamp(rollLerp, 0, 1);
             return;
         }
 
+        wallNormal = wallhit.normal;
+        rollLerp += Time.deltaTime * 5;
+        rollLerp = Mathf.Clamp(rollLerp, 0, 1);
         //rb.useGravity = false;
         rb.linearVelocity = new Vector3(rb.linearVelocity.x, rb.linearVelocity.y > 1 ? rb.linearVelocity.y : 0, rb.linearVelocity.z);
     }
@@ -349,10 +373,9 @@ public class NewBehaviourScript : MonoBehaviour
 
     void HandleClimbLedge()
     {
-        if (!canClimbLedge || !attemptClimbLedge) return;
+        if (!canClimbLedge || !attemptClimbLedge || hasClimbedLedge) return;
 
         Debug.Log("WE ARE CLIMBING");
-        float force = ledgeY - rb.transform.position.y;
         rb.linearVelocity = Vector3.up * jumpForce;
         isExitingWall = true;
         canClimbLedge = false;
