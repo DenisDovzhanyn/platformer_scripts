@@ -31,6 +31,12 @@ public class NewBehaviourScript : MonoBehaviour
     private bool isExitingWall = false;
     public float maxWallTime;
     private float wallTimeCounter;
+
+    private bool canClimbLedge;
+    private bool hasClimbedLedge = false;
+    private bool attemptClimbLedge;
+    private float ledgeY = 0;
+
     private float pitch = 0; // we keep our own pitch 
     public float mouseSens;
 
@@ -45,8 +51,12 @@ public class NewBehaviourScript : MonoBehaviour
     public AudioClip sandWalk;
     public AudioClip sandWalkTwo;
 
+    public AudioClip stoneWalk;
+    public AudioClip stoneWalkTwo;
+
     public AudioClip metalLand;
     public AudioClip sandLand;
+    public AudioClip stoneLand;
 
     private RaycastHit wallhit;
     // Start is called once before the first execution of Update after the MonoBehaviour is created
@@ -82,8 +92,10 @@ public class NewBehaviourScript : MonoBehaviour
         // var move = new Vector3(moveDir.x, rb.linearVelocity.y, moveDir.y);
         UpdateGroundedState();
         HandleWallContact();
+        CheckIfCanClimbLedge();
         HandleMovement();
         HandleJump();
+        HandleClimbLedge();
         HandleFall();
     }
 
@@ -106,10 +118,22 @@ public class NewBehaviourScript : MonoBehaviour
 
     public void OnJump(InputValue value)
     {
-        if (isGrounded || coyoteTime > 0 || (isOnWall && canWallJump))
-            attemptingJump = true;
-        else
+
+        if (canClimbLedge)
+        {
+            attemptClimbLedge = true;
             attemptingJump = false;
+        }
+        else if (isGrounded || coyoteTime > 0 || (isOnWall && canWallJump))
+        {
+            attemptingJump = true;
+            attemptClimbLedge = false;
+        }
+        else
+        {
+            attemptingJump = false;
+            attemptClimbLedge = false;
+        }
     }
 
     public void OnLook(InputValue value)
@@ -129,14 +153,15 @@ public class NewBehaviourScript : MonoBehaviour
         cam.fieldOfView += fovIncAmount;
     }
 
-    // shows where we are casting overlapsphere
+    //shows where we are casting overlapsphere
     // void OnDrawGizmosSelected()
     // {
     //     Gizmos.color = Color.yellow;
-    //     Gizmos.DrawWireSphere(transform.position + (Vector3.down * 0.7f), 0.5f); // Start position
+    //     Gizmos.DrawWireSphere(transform.position + (transform.forward * 0.35f) + (Vector3.up * 0.6f), 0.7f); // Start position
 
     //     Debug.Log(isGrounded);
     // }
+
     void UpdateGroundedState()
     {
         Vector3 spherePosition = transform.position + (Vector3.down * 0.7f);
@@ -161,12 +186,19 @@ public class NewBehaviourScript : MonoBehaviour
             currentClip[0] = Random.value > 0.5f ? metalWalk : metalWalkTwo;
             currentClip[1] = metalLand;
         }
+        else if (hits[0].CompareTag("stone"))
+        {
+            currentClip[0] = Random.value > 0.5f ? stoneWalk : stoneWalkTwo;
+            currentClip[1] = stoneLand;
+        }
 
         coyoteTime = 0.2f;
         isGrounded = true;
         wallTimeCounter = maxWallTime;
         isExitingWall = false;
         rb.linearDamping = defaultLinearDampening;
+        canWallJump = true;
+        hasClimbedLedge = false;
     }
 
     void HandleWallContact()
@@ -174,7 +206,8 @@ public class NewBehaviourScript : MonoBehaviour
         Ray rayLeft = new Ray(transform.position, transform.right * -1);
         Ray rayRight = new Ray(transform.position, transform.right);
 
-        isOnWall = Physics.Raycast(rayLeft, out wallhit, 1, 1 << 6) || Physics.Raycast(rayRight, out wallhit, 1, 1 << 6);
+        // we dont wanna say we are on a wall if we are grounded AND touching a wall yk
+        isOnWall = Physics.Raycast(rayLeft, out wallhit, 1, 1 << 6) || Physics.Raycast(rayRight, out wallhit, 1, 1 << 6) && !isGrounded;
 
         if (!isOnWall || isGrounded || isExitingWall)
         {
@@ -184,6 +217,37 @@ public class NewBehaviourScript : MonoBehaviour
 
         //rb.useGravity = false;
         rb.linearVelocity = new Vector3(rb.linearVelocity.x, rb.linearVelocity.y > 1 ? rb.linearVelocity.y : 0, rb.linearVelocity.z);
+    }
+
+    void CheckIfCanClimbLedge()
+    {
+        Vector3 spherePosition = transform.position + (transform.forward * 0.35f)+ (Vector3.up * 0.6f);
+        // only take in floor and wall collisions, basically want to make sure we are touching a floor AND wall bc thats prob a ledge right
+        Collider[] hits = Physics.OverlapSphere(spherePosition, 0.7f, 1 << 3 | 1 << 6);
+        bool isTouchingFloor = false;
+        bool isTouchingWall = false;
+        
+        foreach (Collider col in hits)
+        {
+            // dont wanna keep looping if both conditions are met
+            if (isTouchingFloor && isTouchingWall) break;
+
+            if (col.gameObject.layer == 3)
+            {
+                isTouchingFloor = true;
+                ledgeY = col.gameObject.transform.position.y;
+            }
+            else if (col.gameObject.layer == 6) isTouchingWall = true;
+        }
+
+        if (!isTouchingFloor || !isTouchingWall)
+        {
+            canClimbLedge = false;
+            return;
+        }
+
+        canClimbLedge = true;
+
     }
 
     void HandleMovement()
@@ -278,9 +342,22 @@ public class NewBehaviourScript : MonoBehaviour
         }
 
         isExitingWall = true;
+        canWallJump = false;
         wallTimeCounter = 0;
-        StartCoroutine(ExitingWall());
         rb.linearVelocity = (cam.transform.forward * jumpForce) + (wallhit.normal * jumpForce / 2) + (Vector3.up * jumpForce);
+    }
+
+    void HandleClimbLedge()
+    {
+        if (!canClimbLedge || !attemptClimbLedge) return;
+
+        Debug.Log("WE ARE CLIMBING");
+        float force = ledgeY - rb.transform.position.y;
+        rb.linearVelocity = Vector3.up * jumpForce;
+        isExitingWall = true;
+        canClimbLedge = false;
+        attemptClimbLedge = false;
+        hasClimbedLedge = true;
     }
 
     void HandleFall()
