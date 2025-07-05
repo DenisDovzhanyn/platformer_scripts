@@ -6,11 +6,10 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using Random = UnityEngine.Random;
 
-public class NewBehaviourScript : MonoBehaviour
+public class PlayerController : MonoBehaviour
 {
     private Rigidbody rb;
     private float defaultLinearDampening;
-    private Camera cam;
 
     public float moveSpeed;
     public float jumpForce;
@@ -21,14 +20,16 @@ public class NewBehaviourScript : MonoBehaviour
     private float currFallMultiplier;
 
     private bool attemptingJump = false;
-    private bool doCameraTransition = false;
 
     private bool isGrounded = true;
     private float timeSinceLastJump = 0;
     private float coyoteTime = 0.2f;
-    private bool isOnWall = false;
+    
+    [HideInInspector]
+    public bool isOnWall { get; private set; } = false;
     private bool canWallJump = true;
-    private bool isExitingWall = false;
+    [HideInInspector]
+    public bool isExitingWall { get; private set; } = false;
     public float maxWallTime;
     private float wallTimeCounter;
 
@@ -36,9 +37,9 @@ public class NewBehaviourScript : MonoBehaviour
     private bool hasClimbedLedge = false;
     private float ledgeY = 0;
 
-    private float pitch = 0; // we keep our own pitch 
-    public float mouseSens;
-    private float rollLerp;
+    [HideInInspector]
+    public float pitch { get; private set; } = 0; // we keep our own pitch 
+    public float mouseSens; 
 
     private AudioSource audioPlayer;
     private AudioClip[] currentClip = new AudioClip[2];
@@ -60,20 +61,16 @@ public class NewBehaviourScript : MonoBehaviour
 
     private RaycastHit wallhit;
     // i do this because even if raycast hits nothing, wall hit will be given default values which i do not want for my cam roll
-    private Vector3 wallNormal;
+    [HideInInspector]
+    public Vector3 wallNormal { get; private set; }
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
         //* set state in class definition
-
-        Cursor.visible = false;
-        Cursor.lockState = CursorLockMode.Locked;
-
         currFallMultiplier = fallMultiplier;
-
+        
         rb = GetComponent<Rigidbody>();
         audioPlayer = GetComponent<AudioSource>();
-        cam = GetComponentInChildren<Camera>();
 
         defaultLinearDampening = rb.linearDamping;
     }
@@ -83,9 +80,8 @@ public class NewBehaviourScript : MonoBehaviour
     {
         timeSinceLastPlayed += Time.deltaTime;
         timeSinceLastJump += Time.deltaTime;
-        HandleCameraPitch();
+        UpdatePitch();
         // because camera is attached to player and its rotation is relative to it, we rotate the player left/right
-        UpdateCameraFov();
         rb.transform.Rotate(Vector3.up * (lookInput.x * mouseSens));
     }
 
@@ -100,13 +96,7 @@ public class NewBehaviourScript : MonoBehaviour
         HandleFall();
     }
 
-    void LateUpdate()
-    {
-        cam.transform.localRotation = Quaternion.Euler(pitch, cam.transform.localRotation.y, cam.transform.localRotation.z);
-        UpdateCameraOrientationOnWall();
-    }
-
-    void HandleCameraPitch()
+    void UpdatePitch()
     {
         // even though it hurts my head, we subtract because in 'eular angles' a positive pitch makes us point down on the x axis
         pitch -= lookInput.y * mouseSens;
@@ -134,32 +124,6 @@ public class NewBehaviourScript : MonoBehaviour
     public void OnLook(InputValue value)
     {
         lookInput = value.Get<Vector2>();
-    }
-
-    void UpdateCameraFov()
-    {
-        if (!doCameraTransition && cam.fieldOfView <= 60) return;
-        float fovIncAmount = 80f * Time.deltaTime;
-        //* does a bouncy zoom effect
-
-        if (!doCameraTransition) fovIncAmount *= -1;
-        else if (cam.fieldOfView >= 70) doCameraTransition = false;
-
-        cam.fieldOfView += fovIncAmount;
-    }
-
-    void UpdateCameraOrientationOnWall()
-    {
-        float dot = Vector3.Dot(wallNormal, transform.right);
-        //why -mathf.sign()?  a negative z value = rolling cam right and vice versa
-        //if i have a wall normal facing (1,0,0), and my transform.right is (1,0,0)
-        //my dot product is 1, meaning that the wall is to my left, if i multiply that by 10 or multiply mathf.sign(dot) (which will equal 1)
-        //by 10, then that mean i will rotate my z positively by 10, which in turn will roll the camera to the left, making me turn into the wall
-        // so instead we take the opposite sign, letting us tilt in the direction the wall is facing
-        Quaternion roll = Quaternion.Euler(pitch, cam.transform.localRotation.y, 10 * -Mathf.Sign(dot));
-        
-        cam.transform.localRotation = Quaternion.Lerp(cam.transform.localRotation, roll, rollLerp);
-        
     }
 
     //shows where we are casting overlapsphere
@@ -218,16 +182,9 @@ public class NewBehaviourScript : MonoBehaviour
         // we dont wanna say we are on a wall if we are grounded AND touching a wall yk
         isOnWall = (Physics.Raycast(rayLeft, out wallhit, 1, 1 << 6) || Physics.Raycast(rayRight, out wallhit, 1, 1 << 6)) && !isGrounded;
 
-        if (!isOnWall || isGrounded || isExitingWall)
-        {
-            rollLerp -= Time.deltaTime * 5;
-            rollLerp = Mathf.Clamp(rollLerp, 0, 1);
-            return;
-        }
-
+        if (!isOnWall || isGrounded || isExitingWall) return;
+        
         wallNormal = wallhit.normal;
-        rollLerp += Time.deltaTime * 5;
-        rollLerp = Mathf.Clamp(rollLerp, 0, 1);
         rb.linearVelocity = new Vector3(rb.linearVelocity.x, rb.linearVelocity.y > 1 ? rb.linearVelocity.y : 0, rb.linearVelocity.z);
     }
 
@@ -281,14 +238,14 @@ public class NewBehaviourScript : MonoBehaviour
             if (playLandSound)
             {
                 timeSinceLastPlayed = 0.1f;
-                audioPlayer.PlayOneShot(currentClip[1], isLandSoundLoud ? 0.8f : 0.5f);
+                audioPlayer.PlayOneShot(currentClip[1], isLandSoundLoud ? 0.6f : 0.4f);
                 playLandSound = false;
                 isLandSoundLoud = false;
             }
             else if (timeSinceLastPlayed > 0.25f && move.magnitude > 5f)
             {
                 timeSinceLastPlayed = 0;
-                audioPlayer.PlayOneShot(currentClip[0], 0.5f);
+                audioPlayer.PlayOneShot(currentClip[0], 0.3f);
             }
 
             
@@ -329,7 +286,7 @@ public class NewBehaviourScript : MonoBehaviour
         isExitingWall = true;
         canWallJump = false;
         wallTimeCounter = 0;
-        rb.linearVelocity = (cam.transform.forward * jumpForce) + (wallhit.normal * jumpForce / 2) + (Vector3.up * jumpForce);
+        rb.linearVelocity = (Camera.main.transform.forward * jumpForce) + (wallhit.normal * jumpForce / 2) + (Vector3.up * jumpForce);
     }
 
     void HandleClimbLedge()
