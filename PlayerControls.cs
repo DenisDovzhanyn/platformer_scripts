@@ -92,7 +92,6 @@ public class NewBehaviourScript : MonoBehaviour
 
     void FixedUpdate()
     {
-        // var move = new Vector3(moveDir.x, rb.linearVelocity.y, moveDir.y);
         UpdateGroundedState();
         HandleWallContact();
         CheckIfCanClimbLedge();
@@ -123,20 +122,13 @@ public class NewBehaviourScript : MonoBehaviour
     public void OnJump(InputValue value)
     {
 
-        if (canClimbLedge)
-        {
-            attemptClimbLedge = true;
-            attemptingJump = false;
-        }
-        else if (isGrounded || coyoteTime > 0 || (isOnWall && canWallJump))
+        if (isGrounded || coyoteTime > 0 || (isOnWall && canWallJump))
         {
             attemptingJump = true;
-            attemptClimbLedge = false;
         }
         else
         {
             attemptingJump = false;
-            attemptClimbLedge = false;
         }
     }
 
@@ -159,13 +151,12 @@ public class NewBehaviourScript : MonoBehaviour
 
     void UpdateCameraOrientationOnWall()
     {
-        //ALL i need to know from the wallhit is whether its facing a negative or positive direction, how can we know with both an x and z axis?
-        //if wallhit.normal returns something like (0.5, 0, -0.5) HOW can i extract that single negative value and know that we have a negative and i need
-        // char cam to rotate left (< 0 on z axis)
-
-
-        // yada yada yada do something here
         float dot = Vector3.Dot(wallNormal, transform.right);
+        //why -mathf.sign()?  a negative z value = rolling cam right and vice versa
+        //if i have a wall normal facing (1,0,0), and my transform.right is (1,0,0)
+        //my dot product is 1, meaning that the wall is to my left, if i multiply that by 10 or multiply mathf.sign(dot) (which will equal 1)
+        //by 10, then that mean i will rotate my z positively by 10, which in turn will roll the camera to the left, making me turn into the wall
+        // so instead we take the opposite sign, letting us tilt in the direction the wall is facing
         Quaternion roll = Quaternion.Euler(pitch, cam.transform.localRotation.y, 10 * -Mathf.Sign(dot));
         
         cam.transform.localRotation = Quaternion.Lerp(cam.transform.localRotation, roll, rollLerp);
@@ -230,7 +221,6 @@ public class NewBehaviourScript : MonoBehaviour
 
         if (!isOnWall || isGrounded || isExitingWall)
         {
-            //rb.useGravity = true;
             rollLerp -= Time.deltaTime * 5;
             rollLerp = Mathf.Clamp(rollLerp, 0, 1);
             return;
@@ -239,7 +229,6 @@ public class NewBehaviourScript : MonoBehaviour
         wallNormal = wallhit.normal;
         rollLerp += Time.deltaTime * 5;
         rollLerp = Mathf.Clamp(rollLerp, 0, 1);
-        //rb.useGravity = false;
         rb.linearVelocity = new Vector3(rb.linearVelocity.x, rb.linearVelocity.y > 1 ? rb.linearVelocity.y : 0, rb.linearVelocity.z);
     }
 
@@ -321,34 +310,6 @@ public class NewBehaviourScript : MonoBehaviour
         if (wallTimeCounter <= 0 || currentVelocityNoY.magnitude <= 5) isExitingWall = true;
     }
 
-    // void HandleJump()
-    // {
-    //     if (!attemptingJump || !canJump) return;
-
-    //     attemptingJump = false;
-    //     canJump = false;
-
-    //     rb.linearDamping = defaultLinearDampening / 2;
-    //     if (isGrounded || (!isGrounded && coyoteTime > 0))
-    //     {
-    //         rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z) + Vector3.up * jumpForce;
-    //         StartCoroutine(WaitToSetCanJump());
-    //         audioPlayer.PlayOneShot(currentClip[0], 0.8f);
-    //         return;
-    //     }
-
-    //     //* either player has already jumped or they have fallen off a ledge
-    //     if (isOnWall)
-    //     {
-    //         isExitingWall = true;
-    //         wallTimeCounter = 0;
-    //         StartCoroutine(ExitingWall());
-    //     }
-
-    //     rb.linearVelocity = cam.transform.forward * (jumpForce * 2);
-    //     doCameraTransition = true;
-    // }
-
     void HandleJump()
     {
         if (!attemptingJump) return;
@@ -391,9 +352,8 @@ public class NewBehaviourScript : MonoBehaviour
         // then we set fall multiplier to 1, because 1 - 1 = 0 => physics.gravity.y * 0 = 0. so no additional gravity will be added because
         // engine already applying gravity
         float extraDownVel = Physics.gravity.y * (currFallMultiplier - 1);
-        //rb.linearVelocity += Vector3.up * (extraDownVel * Time.fixedDeltaTime);
         rb.AddForce(Vector3.up * extraDownVel, ForceMode.Acceleration);
-        //rb.linearVelocity = new Vector3(rb.linearVelocity.x, fallRate , rb.linearVelocity.z);
+
     }
 
     IEnumerator ExitingWall()
