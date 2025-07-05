@@ -34,7 +34,6 @@ public class NewBehaviourScript : MonoBehaviour
 
     private bool canClimbLedge;
     private bool hasClimbedLedge = false;
-    private bool attemptClimbLedge;
     private float ledgeY = 0;
 
     private float pitch = 0; // we keep our own pitch 
@@ -253,7 +252,8 @@ public class NewBehaviourScript : MonoBehaviour
             else if (col.gameObject.layer == 6) isTouchingWall = true;
         }
 
-        if (!isTouchingFloor || !isTouchingWall)
+        // check for grounded too because i dont want to apply jump force later on just bc we are standing near a ledge
+        if (!isTouchingFloor || !isTouchingWall || isGrounded)
         {
             canClimbLedge = false;
             return;
@@ -294,7 +294,7 @@ public class NewBehaviourScript : MonoBehaviour
             
             rb.AddForce(move - currentVelocityNoY, ForceMode.VelocityChange);
             return;
-        }
+        } 
 
         if (!isOnWall || isExitingWall)
         {
@@ -334,13 +334,12 @@ public class NewBehaviourScript : MonoBehaviour
 
     void HandleClimbLedge()
     {
-        if (!canClimbLedge || !attemptClimbLedge || hasClimbedLedge) return;
+        if (!canClimbLedge || hasClimbedLedge) return;
 
         Debug.Log("WE ARE CLIMBING");
         rb.linearVelocity = Vector3.up * jumpForce;
         isExitingWall = true;
         canClimbLedge = false;
-        attemptClimbLedge = false;
         hasClimbedLedge = true;
     }
 
