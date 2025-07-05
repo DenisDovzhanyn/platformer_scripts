@@ -8,6 +8,8 @@ using Random = UnityEngine.Random;
 
 public class PlayerController : MonoBehaviour
 {
+    public PlayerSettings settings;
+    private InputManager inputs;
     private Rigidbody rb;
     private float defaultLinearDampening;
 
@@ -35,12 +37,7 @@ public class PlayerController : MonoBehaviour
 
     private bool canClimbLedge;
     private bool hasClimbedLedge = false;
-    private float ledgeY = 0;
-
-    [HideInInspector]
-    public float pitch { get; private set; } = 0; // we keep our own pitch 
-    public float mouseSens; 
-
+  
     private AudioSource audioPlayer;
     private AudioClip[] currentClip = new AudioClip[2];
     private float timeSinceLastPlayed = 0f;
@@ -68,7 +65,10 @@ public class PlayerController : MonoBehaviour
     {
         //* set state in class definition
         currFallMultiplier = fallMultiplier;
-        
+
+        inputs = GetComponent<InputManager>();
+        inputs.jumpAttempt.AddListener(Jump);
+
         rb = GetComponent<Rigidbody>();
         audioPlayer = GetComponent<AudioSource>();
 
@@ -80,9 +80,9 @@ public class PlayerController : MonoBehaviour
     {
         timeSinceLastPlayed += Time.deltaTime;
         timeSinceLastJump += Time.deltaTime;
-        UpdatePitch();
+        ReadInputAndApplyModifiers();
         // because camera is attached to player and its rotation is relative to it, we rotate the player left/right
-        rb.transform.Rotate(Vector3.up * (lookInput.x * mouseSens));
+        rb.transform.Rotate(Vector3.up * (lookInput.x * settings.mouseSens));
     }
 
     void FixedUpdate()
@@ -96,19 +96,13 @@ public class PlayerController : MonoBehaviour
         HandleFall();
     }
 
-    void UpdatePitch()
+    void ReadInputAndApplyModifiers()
     {
-        // even though it hurts my head, we subtract because in 'eular angles' a positive pitch makes us point down on the x axis
-        pitch -= lookInput.y * mouseSens;
-        pitch = Mathf.Clamp(pitch, -90, 90);
+        moveDir = inputs.moveInput * moveSpeed;
+        lookInput = inputs.lookInput;
     }
 
-    public void OnMove(InputValue value)
-    {
-        moveDir = value.Get<Vector2>() * moveSpeed;
-    }
-
-    public void OnJump(InputValue value)
+    void Jump()
     {
 
         if (isGrounded || coyoteTime > 0 || (isOnWall && canWallJump))
@@ -119,11 +113,6 @@ public class PlayerController : MonoBehaviour
         {
             attemptingJump = false;
         }
-    }
-
-    public void OnLook(InputValue value)
-    {
-        lookInput = value.Get<Vector2>();
     }
 
     //shows where we are casting overlapsphere
@@ -201,11 +190,7 @@ public class PlayerController : MonoBehaviour
             // dont wanna keep looping if both conditions are met
             if (isTouchingFloor && isTouchingWall) break;
 
-            if (col.gameObject.layer == 3)
-            {
-                isTouchingFloor = true;
-                ledgeY = col.gameObject.transform.position.y;
-            }
+            if (col.gameObject.layer == 3) isTouchingFloor = true;
             else if (col.gameObject.layer == 6) isTouchingWall = true;
         }
 
